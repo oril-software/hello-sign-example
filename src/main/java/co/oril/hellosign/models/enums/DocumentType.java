@@ -4,8 +4,8 @@ import java.io.Serializable;
 
 public enum DocumentType implements Serializable {
 
-	DOCUMENT_ONE_SIGNER("Auto Use New Agreement"),
-	DOCUMENT_TWO_SIGNERS("Dealership Agreement 1"),
+	DOCUMENT_ONE_SIGNER("Document one signer"),
+	DOCUMENT_TWO_SIGNERS("Document two signers"),
 	UNKNOWN("Unknown");
 
 	public final String title;

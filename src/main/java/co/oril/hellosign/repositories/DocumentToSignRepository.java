@@ -15,6 +15,6 @@ public interface DocumentToSignRepository extends MongoRepository<DocumentToSign
 
 	Optional<DocumentToSign> findBySignatureRequestId(String signatureRequestId);
 
-	List<DocumentToSign> findAllByStatusIsAndDealer_StatusIs(SignStatus status, SignStatus dealerStatus);
+	List<DocumentToSign> findAllByStatusIsAndFirstSigner_StatusIs(SignStatus status, SignStatus firstSignerStatus);
 
 }

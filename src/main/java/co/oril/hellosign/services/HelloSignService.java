@@ -35,8 +35,8 @@ import static co.oril.hellosign.models.enums.SignStatus.SIGNED;
 @Service
 public class HelloSignService {
 
-	private final String DEALER_ROLE = "Dealer";
-	private final String BROKER_ROLE = "Broker";
+	private final String FIRST_SIGNER_ROLE = "First signer";
+	private final String SECOND_SIGNER_ROLE = "Second signer";
 	private final String clientId;
 	private final boolean isTest;
 	private final HelloSignClient helloSignClient;
@@ -50,24 +50,27 @@ public class HelloSignService {
 		this.repository = repository;
 	}
 
-	public String signDocument(DocumentType documentType) {
+	public String signDocumentByFirstSigner(DocumentType documentType) {
 		return createSignRequest(documentType)
+				// Parse the response from HelloSign
 				.map(request -> requestToDocument(request, documentType))
 				.map(repository::save)
-				.map(document -> getSigningUrl(document.getDealer().getSignatureId()))
+				// Generate signing url for First Signer
+				.map(document -> getSigningUrl(document.getFirstSigner().getSignatureId()))
 				.orElseThrow(() -> new BadRequestException("Could not get sign url for document " + documentType));
 	}
 
-	public String signDocumentByBroker(String requestId) {
+	public String signDocumentBySecondSigner(String requestId) {
 		DocumentToSign document = getDocument(requestId);
-		if (document.getBroker().getStatus() == SIGNED) {
+		if (document.getSecondSigner().getStatus() == SIGNED) {
 			throw new BadRequestException("Document already signed");
 		}
-		return getSigningUrl(document.getBroker().getSignatureId());
+		// Generate signing url for Second Signer
+		return getSigningUrl(document.getSecondSigner().getSignatureId());
 	}
 
 	public List<DocumentToSign> getDocumentsToSign() {
-		return repository.findAllByStatusIsAndDealer_StatusIs(PENDING, SIGNED);
+		return repository.findAllByStatusIsAndFirstSigner_StatusIs(PENDING, SIGNED);
 	}
 
 	public void handleHelloSignEvent(String eventJson) {
@@ -103,7 +106,7 @@ public class HelloSignService {
 
 	private void handleCompleteEvent(Callback callback) {
 		DocumentToSign document = getDocument(callback.getSignatureRequestData().getSignatureRequestId());
-		updateAgreement(document);
+		receiveSignedDocument(document);
 	}
 
 	private File getFile(String signatureRequestId) {
@@ -114,7 +117,7 @@ public class HelloSignService {
 		}
 	}
 
-	private DocumentToSign updateAgreement(DocumentToSign document) {
+	private DocumentToSign receiveSignedDocument(DocumentToSign document) {
 		final File signedDocument = getFile(document.getSignatureRequestId());
 		try {
 			document.setSignedDocumentInBase64(Base64.getEncoder().encodeToString(FileUtils.readFileToByteArray(signedDocument)));
@@ -139,16 +142,14 @@ public class HelloSignService {
 	private DocumentToSign updateDocumentStatus(DocumentToSign document, Callback callback) {
 		callback.getSignatureRequestData().getSignatures().stream().filter(it -> it.getStatus().equalsIgnoreCase(SIGNED.name())).forEach(signer -> {
 			switch (SignerRole.fromString(signer.getSignerRole())) {
-				case BROKER:
-					if (document.getBroker().getStatus() != SIGNED) {
-						document.getBroker().setStatus(SIGNED);
-						document.setSignedByBroker(new Date());
+				case SECOND_SIGNER:
+					if (document.getSecondSigner().getStatus() != SIGNED) {
+						document.getSecondSigner().setStatus(SIGNED);
 					}
 					break;
-				case DEALER:
-					if (document.getDealer().getStatus() != SIGNED) {
-						document.getDealer().setStatus(SIGNED);
-						document.setSignedByDealer(new Date());
+				case FIRST_SIGNER:
+					if (document.getFirstSigner().getStatus() != SIGNED) {
+						document.getFirstSigner().setStatus(SIGNED);
 					}
 					break;
 			}
@@ -169,6 +170,7 @@ public class HelloSignService {
 	}
 
 	private Optional<JSONObject> createSignRequest(DocumentType documentType) {
+		// Receive a template from the HelloSign portal by name
 		Optional<String> templateOptional = getTemplateId(documentType.title);
 		if (templateOptional.isEmpty()) {
 			return Optional.empty();
@@ -180,18 +182,20 @@ public class HelloSignService {
 			request.setTestMode(isTest);
 			request.setMessage("");
 
+			// Fill out the document with the necessary information. Field names must be the same as in the template.
 			switch (documentType) {
-				case DOCUMENT_TWO_SIGNERS:
-					fillDocumentWithTwoSigners(request);
-					break;
 				case DOCUMENT_ONE_SIGNER:
 					fillDocumentWithOneSigner(request);
+					break;
+				case DOCUMENT_TWO_SIGNERS:
+					fillDocumentWithTwoSigners(request);
 					break;
 				default:
 					throw new BadRequestException("Document type is not supported: " + documentType.title);
 			}
 
 			EmbeddedRequest embedReq = new EmbeddedRequest(clientId, request);
+			// Create the document on the HelloSign portal.
 			SignatureRequest response = (SignatureRequest) helloSignClient.createEmbeddedRequest(embedReq);
 			return Optional.of(new JSONObject(response.toString()));
 		} catch (com.hellosign.sdk.HelloSignException e) {
@@ -202,7 +206,6 @@ public class HelloSignService {
 	private DocumentToSign requestToDocument(JSONObject signatureRequest, DocumentType documentType) {
 		DocumentToSign document = DocumentToSign.builder()
 				.id(ObjectId.get())
-				.createdAt(new Date())
 				.type(documentType)
 				.status(PENDING)
 				.build();
@@ -210,16 +213,16 @@ public class HelloSignService {
 		String signatureRequestId = signatureRequest.getString("signature_request_id");
 		document.setSignatureRequestId(signatureRequestId);
 		switch (documentType) {
-			case DOCUMENT_TWO_SIGNERS:
+			case DOCUMENT_ONE_SIGNER:
 				try {
-					addSigners(document, signatureRequest.getJSONArray("signatures"));
+					addSigner(document, signatureRequest.getJSONArray("signatures"), 0);
 				} catch (Exception e) {
 					throw new HelloSignLocalException("Could not parse HelloSign response");
 				}
 				break;
-			case DOCUMENT_ONE_SIGNER:
+			case DOCUMENT_TWO_SIGNERS:
 				try {
-					addSigner(document, signatureRequest.getJSONArray("signatures"), 0);
+					addSigners(document, signatureRequest.getJSONArray("signatures"));
 				} catch (Exception e) {
 					throw new HelloSignLocalException("Could not parse HelloSign response");
 				}
@@ -249,10 +252,10 @@ public class HelloSignService {
 				PENDING
 		);
 
-		if (signer.getRole() == SignerRole.DEALER) {
-			document.setDealer(signer);
-		} else if (signer.getRole() == SignerRole.BROKER) {
-			document.setBroker(signer);
+		if (signer.getRole() == SignerRole.FIRST_SIGNER) {
+			document.setFirstSigner(signer);
+		} else if (signer.getRole() == SignerRole.SECOND_SIGNER) {
+			document.setSecondSigner(signer);
 		}
 	}
 
@@ -275,13 +278,13 @@ public class HelloSignService {
 	}
 
 	private void fillDocumentWithTwoSigners(TemplateSignatureRequest request) throws HelloSignException {
-		request.setSigner(DEALER_ROLE, "dealer_email@email.co", "Dealer Name");
-		request.setSigner(BROKER_ROLE, "broker_email@email.co", "Broker Name");
+		request.setSigner(FIRST_SIGNER_ROLE, "first_signer_email@email.co", "First signer Name");
+		request.setSigner(SECOND_SIGNER_ROLE, "second_signer_email@email.co", "Second signer Name");
 		setDocumentFields(request);
 	}
 
 	private void fillDocumentWithOneSigner(TemplateSignatureRequest request) throws HelloSignException {
-		request.setSigner(DEALER_ROLE, "dealer_email@email.co", "Dealer Name");
+		request.setSigner(FIRST_SIGNER_ROLE, "first_signer@email.co", "First signer Name");
 		setDocumentFields(request);
 	}
 
@@ -295,7 +298,7 @@ public class HelloSignService {
 		CustomField customField = new CustomField();
 		customField.setName(name);
 		customField.setValue(value);
-		customField.setEditor(DEALER_ROLE);
+		customField.setEditor(FIRST_SIGNER_ROLE);
 		customField.setIsRequired(false);
 		return customField;
 	}

@@ -18,9 +18,9 @@ public class HelloSignController {
 	private final HelloSignService helloSignService;
 
 	@GetMapping(value = "/hellosign/document/sign")
-	public ResponseEntity<String> signDealershipAgreement(@RequestParam("name") String documentType) {
+	public ResponseEntity<String> signDocumentByFirstSigner(@RequestParam("name") String documentType) {
 		DocumentType docType = DocumentType.fromString(documentType);
-		return ResponseEntity.ok(helloSignService.signDocument(docType));
+		return ResponseEntity.ok(helloSignService.signDocumentByFirstSigner(docType));
 	}
 
 	@PostMapping(value = "/hellosign/app/callback")
@@ -30,8 +30,8 @@ public class HelloSignController {
 	}
 
 	@GetMapping(value = "/hellosign/{requestId}/sign")
-	public ResponseEntity<String> signDocumentByBroker(@PathVariable("requestId") String requestId) {
-		return ResponseEntity.ok(helloSignService.signDocumentByBroker(requestId));
+	public ResponseEntity<String> signDocumentBySecondSigner(@PathVariable("requestId") String requestId) {
+		return ResponseEntity.ok(helloSignService.signDocumentBySecondSigner(requestId));
 	}
 
 	@GetMapping(value = "/hellosign/documents")
