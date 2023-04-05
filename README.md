@@ -15,8 +15,8 @@ in **__application.properties__** file.
 * From CLI: run command `mvn spring-boot:run`
 ### Usage Guide & Tips
 First of all, we need to create an app on the HelloSign portal and fill event callback. <br />
-<img src="/Users/oril/IdeaProjects/hello-sign/src/main/resources/images/create_app.png" style="display: inline-block; margin: 0 auto; max-width: 300px"/> <br />
-<img src="/Users/oril/IdeaProjects/hello-sign/src/main/resources/images/event_callback.png" style="display: inline-block; margin: 0 auto; max-width: 300px"/> <br />
+<img src="https://user-images.githubusercontent.com/29039912/229996859-af0204f8-abc0-4366-a2dc-72d052b052d4.png" width="300">
+<img src="https://user-images.githubusercontent.com/29039912/229996880-a899e447-a357-4a6f-96ce-e099704e2445.png" width="300"> <br/>
 **IMPORTANT**: The route to the callback endpoint should be open.
 ### Community
 * Please send us your suggestions on how we make this code even more useful for the development community or contribute to this repo!
